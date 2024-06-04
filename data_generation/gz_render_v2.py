@@ -325,11 +325,8 @@ class DataRenderGazebo(Node):
             self.sample_num += 1
 
         
-
-
-        
     
-    #%% Load the meshes of all objects convert them to point clouds
+    # Load the meshes of all objects convert them to point clouds
     # combine and return the pointclouds of all meshes in a dictionary
     def mesh2pcld(self):
         all_points = {}
@@ -537,7 +534,7 @@ class DataRenderGazebo(Node):
 
 def main(args=None):
 
-    #%% Create the directories if they don't already exist
+    # Create the directories if they don't already exist
     if not os.path.exists('dataset/rgb'):
         os.makedirs('dataset/rgb')
     if not os.path.exists('dataset/depth'):
