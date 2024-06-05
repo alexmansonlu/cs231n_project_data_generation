@@ -269,14 +269,14 @@
      <include>
       <uri>model://apple</uri>
       <name>apple</name>
-      <pose>0 0 0.84 0 0 0</pose>
+      <pose>0.1 0.1 0.84 0 0 0</pose>
       <static>1</static>
     </include> 
     
     <include>
       <uri>model://banana</uri>
       <name>banana</name>
-      <pose>0.03 0.03 0.84 0 0 0</pose>
+      <pose>0 0 0.84 0 0 0</pose>
       <static>1</static>
     </include> 
           

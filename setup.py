@@ -36,7 +36,9 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'gz_render = data_generation.gz_render:main'
+            'gz_render = data_generation.gz_render:main',
+            'gz_render2 = data_generation.gz_render_v4:main',
+            'gz_render3 = data_generation.gz_render_v5:main'
         ],
     },
 )

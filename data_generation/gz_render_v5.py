@@ -22,8 +22,11 @@ import time
 model_workfolder = '/home/alexmanson/Documents/stanford/gazebo_ycb/models/'
 #model_workfolder = '/home/alexmanson/Documents/stanford/dg_ws/src/data_generation/models/'
 
-MODEL_LIST = ["banana","apple"] # ALL POSSIBLE MODELS CAN BE SELECTED
-SETUP_ITERATION = 3 # ITERATED FOR HOW MANY SETUP COMBINATION
+MODEL_LIST = ["banana","apple","bleach_cleanser","bowl","cracker_box",
+            "gelatin_box","master_chef_can","mustard_bottle","pitcher_base",
+            "potted_meat_can","pudding_box","sugar_box","tomato_soup_can",
+              "tuna_fish_can" ] # ALL POSSIBLE MODELS CAN BE SELECTED
+SETUP_ITERATION = 20 # ITERATED FOR HOW MANY SETUP COMBINATION
 #region Utils Function
 #%% Function to convert between Image types for depth images
 def convert_types(img, orig_min, orig_max, tgt_min, tgt_max, tgt_type):
@@ -64,6 +67,22 @@ def get_camera_extrinsics(phi,theta, dist):
     cam_world_T = np.vstack((cam_world_T, [0,0,0,1]))
     
     return cam_world_T
+
+def check_collision(pose,existing_poses,threshold=0.1):
+    for p in existing_poses:
+        distance = ((pose.position.x-p.position.x)**2 + (pose.position.y-p.position.y)**2 + (pose.position.z-p.position.z)**2)**0.5
+        print(f"distance is {distance}")
+        if distance < threshold:
+            return True
+    return False
+
+def generate_pose():
+    pose = Pose()
+    pose.position.x = random.uniform(-0.15, 0.15)
+    pose.position.y = random.uniform(-0.15, 0.15)
+    pose.position.z = 1.0  # Adjust as needed
+    return pose
+
 
 #%% Calculate parameters
 def calc_params(phi,theta,dist):
@@ -121,8 +140,8 @@ def pcl_2_binary_mask(obj_cam_T,n_models, all_points, cam_info_msg,models):
     
     
     for i in np.argsort(-obj_cam_T[2,3,:]):
-        print(str(models[i]))
-        print(i)
+        # print(str(models[i]))
+        # print(i)
         # copy all  the points
         cloud_temp = copy.deepcopy(all_points[str(models[i])]).transpose().astype(np.float32)
         cloud_temp = np.vstack(( cloud_temp, np.ones((1,cloud_temp.shape[1])) )).astype(np.float32)
@@ -135,11 +154,11 @@ def pcl_2_binary_mask(obj_cam_T,n_models, all_points, cam_info_msg,models):
         
         # perspective projection into ifrom rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicymage-plane
         x,y,z,w = np.dot( cam_P, cloud_optical ).astype(np.float32) #This is the projection step
-        print(z)
+        #print(z)
         x = x / z
         y = y / z
         
-        print(x)
+        #print(x)
 
         #clips out all the points projected out of image height and width
         clipping = np.logical_and( np.logical_and(x>=0, x<=640) , np.logical_and(y>=0, y<=480) )
@@ -238,18 +257,18 @@ class DataRenderGazebo(Node):
         self.sample_num = 0
         self.phi_init = 35
         self.theta_init = 0
-        self.dist_init = 0.2
+        self.dist_init = 0.4
 
         self.phi = self.phi_init
         self.theta = self.theta_init
         self.dist = self.dist_init
 
-        self.max_phi = 90
+        self.max_phi = 75
         self.max_theta = 360
-        self.max_dist = 0.8
+        self.max_dist = 1.2
 
-        self.phi_increment = 15
-        self.theta_increment = 15
+        self.phi_increment = 5
+        self.theta_increment = 30
         self.dist_increment = 0.2
         self.startchecking = True
         self.models_param = []
@@ -294,14 +313,19 @@ class DataRenderGazebo(Node):
             # delete the previous models 
             self.get_logger().info(f'======= SETUP {i} START ========')
             self.get_logger().info(f'Deleting models: {self.models_param}')
+
+
+
             for j in range(self.model_num):
                 self.delete_model(self.models_param[j],j)
 
             # spawn the new models
             self.generate_set()
 
+            self.existing_poses = []
             for j in range(self.model_num):
                 self.spawn_model(self.models_param[j],j)
+                time.sleep(0.5)
             
             time.sleep(5) # wait for the models to be spawned
             self.get_logger().info(f'======= SETUP {i} COMPLETED ========')
@@ -318,9 +342,13 @@ class DataRenderGazebo(Node):
                 #self.get_logger().info('wait some time after camera being set')
                 time.sleep(0.05)
                 #check image
+                checktime = 0
                 while not self.check_new_image():
                     self.get_logger().info('waiting for new image, reset the camera')
                     self.set_cam_state_gazebo(camPos=camPos, camTwist=camTwist)
+                    checktime+=1
+                    if checktime > 10:
+                        break
                     time.sleep(0.05)
 
                 self.process_image()
@@ -337,11 +365,11 @@ class DataRenderGazebo(Node):
                     
                 cam_world_T = get_camera_extrinsics(self.phi,self.theta, self.dist)
                 gt_dict,obj_cam_T = get_object2cam_pose(resp, self.model_num ,cam_world_T)
-                self.get_logger().info('Saving the fucking meta')
+                self.get_logger().info('Saving the meta info')
 
                 sio.savemat('dataset/meta/'+str(i)+'_'+str(self.sample_num)+'-meta.mat',gt_dict)
 
-                self.get_logger().info('Saving the fucking mask')
+                self.get_logger().info('Saving the mask info')
                 bin_mask= pcl_2_binary_mask(obj_cam_T, self.model_num, self.all_points, self.cam_info_msg, self.models_param)
                 
                 cv2.imwrite('dataset/mask/'+str(i)+'_'+str(self.sample_num)+'.png',bin_mask)
@@ -377,12 +405,16 @@ class DataRenderGazebo(Node):
         else:
             self.get_logger().error(f'Failed to delete {model_name}')
 
+
+
     def spawn_model(self, model_name, num):
         self.get_logger().info(f'Trying to spawn {model_name}...')
-        pose = Pose()
-        pose.position.x = random.uniform(-0.1, 0.1)
-        pose.position.y = random.uniform(-0.1, 0.1)
-        pose.position.z = 0.84  # Adjust as needed
+
+        while True:
+            pose = generate_pose()
+            if not check_collision(pose,self.existing_poses):
+                self.existing_poses.append(pose)
+                break
 
         # Randomize orientation
         roll = 0
@@ -412,12 +444,12 @@ class DataRenderGazebo(Node):
         model_path = model_workfolder+f'/{model_name}/model.sdf'  # Adjust the path as needed
         with open(model_path, 'r') as file:
             xml = file.read()
-            self.get_logger().info(f'XML read {xml}...')
+            #self.get_logger().info(f'XML read {xml}...')
             return xml
         
     def generate_set(self):
-        #num_model = random.randint(1,3)
-        num_model = 3
+        num_model = random.randint(2,6)
+        #num_model = 3
         self.models_param = []
         self.model_num = num_model
         for i in range(num_model):
@@ -435,7 +467,7 @@ class DataRenderGazebo(Node):
 
         for i in range (0,len(MODEL_LIST)):
             mesh = o3d.io.read_triangle_mesh(model_workfolder+str(MODEL_LIST[i])+'/meshes/'+str(MODEL_LIST[i])+'.stl')
-            poisson_pcld = mesh.sample_points_poisson_disk(number_of_points=30000) 
+            poisson_pcld = mesh.sample_points_poisson_disk(number_of_points=100000) 
             all_pclds[str(MODEL_LIST[i])] = poisson_pcld
             o3d.io.write_point_cloud('dataset/model_pointcloud/'+str(MODEL_LIST[i])+'.ply', poisson_pcld )
             all_points[str(MODEL_LIST[i])] = np.asarray(poisson_pcld.points)#, dtype= np.float32)   
@@ -451,16 +483,16 @@ class DataRenderGazebo(Node):
             #print(request)
             request.name = self.models_param[i]+str(i)
             request.reference_frame = 'world'
-            self.get_logger().info(f'Sending request of {request} for model {self.models_param[i]+str(i)}')
+            #self.get_logger().info(f'Sending request of {request} for model {self.models_param[i]+str(i)}')
             try:
                 future = self.get_model_state_client.call_async(request)
-                self.get_logger().info('Waiting Service...')
+                #self.get_logger().info('Waiting Service...')
                 rclpy.spin_until_future_complete(self, future)
                 response = future.result()
-                self.get_logger().info('done')
+                #self.get_logger().info('done')
                 if response.success:
                     resp.append(response.state)
-                    self.get_logger().info(f'State for model {self.models_param[i]+str(i)}: {response.state}')
+                    #self.get_logger().info(f'State for model {self.models_param[i]+str(i)}: {response.state}')
                 else:
                     self.get_logger().info(f'Failed to get state for model {self.models_param[i]+str(i)}')
             except Exception as e:
